@@ -35,7 +35,7 @@ https://github.com/IntelRealSense/librealsense/blob/master/third-party/libtm/lib
   <arg name="publish_odom_tf"     default="true"/>
   <arg name="publish_tf"               default="false"/>
 
-  <arg name="pose_frame_id"             default="base_link"/>
+  <arg name="pose_frame_id"             default="camera_odom_link"/>
   <arg name="odom_frame_id"            default="odom"/>
   
   <group ns="$(arg camera)">

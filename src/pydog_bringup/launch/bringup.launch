@@ -22,18 +22,20 @@
 
 
         <!-- ==================== HARDWARE ==================== -->
-        <node pkg="rosserial_python" name="rosserial_champ" type="serial_node.py" output="screen" respawn="true">
+        <node pkg="rosserial_python" name="rosserial_pydog" type="serial_node.py" output="screen" respawn="true">
             <param name="port" value="/dev/serial_sdk" />
             <param name="baud" value="921600" />
         </node>
 
+        <node pkg="pydog_base" name="pydog_base" type="pydog_base_node" output="screen" />
+
         <!-- ==================== CONTROLLER ==================== -->
         <include file="$(find champ_bringup)/launch/include/velocity_smoother.launch" />
 
-        <node pkg="pydog_base" name="pydog_base" type="pydog_base_node" output="screen" />
-
         <!-- ==================== VISUAL ODOMETER ==================== -->
         <remap from="/camera/odom/sample" to="/odom" />
+        <node pkg="tf2_ros" type="static_transform_publisher" name="camera_odom_link_base_link_broadcaster"
+          args="-0.2 0.0 0.0 0.0 0.0 0.0 camera_odom_link base_link" />
         <include file="$(find pydog_bringup)/launch/include/t265.launch" />
         
         <!-- ==================== RVIZ ==================== -->
