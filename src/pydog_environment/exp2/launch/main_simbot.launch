@@ -1,0 +1,169 @@
+<!--
+################################################################
+#                                                              #
+#		ROS simmulation for Mobile Robot Olfaction                 #
+#                           							                     #
+################################################################
+-->
+
+<launch>
+    <arg name="scenario" default="exp2" />
+    <arg name="simulation" default="static" />
+    <arg name="source_location_x" default="1.99" />
+    <arg name="source_location_y" default="0.80" />
+    <arg name="source_location_z" default="0.50" />
+
+    ### ROBOT SIMULATION ###
+    <param name="use_sim_time" value="true" />
+
+    <node pkg="stage_ros" type="stageros" name="stage_ros" respawn="false" args="$(find pydog_environment)/$(arg scenario)/launch/ros/stage.world" >
+        <param name="laser_scan_topic" value="/laser_scan"/>
+        <param name="laser_frame_id" value="laser_stage" />
+        <param name="odom_topic" value="/odom"/>
+        <param name="odom_frame_id" value="odom" />    
+        <param name="disable_odometry" value="false" />    
+    </node>
+
+    ### URDF MODEL ###
+    <arg name="robot_name"             default="/" />
+    <arg name="base_frame"             default="base_link" />
+    <arg name="joints_map_file"        default="$(find champ_config)/config/joints/joints.yaml"/>
+    <arg name="links_map_file"         default="$(find champ_config)/config/links/links.yaml"/>
+    <arg name="gait_config_file"       default="$(find champ_config)/config/gait/gait.yaml"/>
+    <arg name="description_file"       default="$(find champ_description)/urdf/champ.urdf"/>
+    <arg name="gazebo"                 default="false" />
+    <arg name="rviz"                   default="false" />
+    <arg name="rviz_ref_frame"         default="odom"/>
+    <arg name="has_imu"                default="true" />
+    <arg name="lite"                   default="false" />
+    <arg name="laser"                  default="sim" />
+    <arg name="joint_controller_topic" default="joint_group_position_controller/command" />
+    <arg name="hardware_connected"     default="false" />
+    <arg name="publish_joint_control"  default="true" />
+    <arg name="publish_foot_contacts"  default="true" />
+    <arg name="close_loop_odom"        default="false" />
+
+    <include file="$(find champ_description)/launch/description.launch">
+        <arg name="description_file" value="$(arg description_file)"/>
+    </include>
+    <rosparam command="load" ns="gait"       file="$(arg gait_config_file)" />
+    <rosparam command="load" ns="links_map"  file="$(arg links_map_file)" />
+    <rosparam command="load" ns="joints_map" file="$(arg joints_map_file)" />
+
+    <include file="$(find champ_bringup)/launch/include/velocity_smoother.launch" />
+
+    <node unless="$(arg lite)" pkg="champ_base" name="champ_controller" type="quadruped_controller_node" output="screen">
+        <param                                    name="gazebo"                 value="$(arg gazebo)" />
+        <param if="$(arg hardware_connected)"     name="publish_joint_states"   value="false" />
+        <param unless="$(arg hardware_connected)" name="publish_joint_states"   value="true" />
+        <param                                    name="publish_foot_contacts"  value="$(arg publish_foot_contacts)" />
+        <param                                    name="publish_joint_control"  value="$(arg publish_joint_control)" />
+        <param                                    name="joint_controller_topic" value="$(arg joint_controller_topic)" />
+    </node>
+
+    ### NAVIGATION ###
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find pydog_environment)/$(arg scenario)/occupancy.yaml">
+      <param name="frame_id" value="map"/>
+    </node>  
+
+    <!-- Calls navigation stack packages -->
+    <include file="$(find champ_navigation)/launch/navigation/move_base.launch">
+        <arg name="robot_name"   value="$(arg robot_name)"/>
+    </include>
+    
+    <node pkg="fake_localization" type="fake_localization" name="fake_localization">	    
+        <param name="odom_frame_id" value="odom"/>
+        <param name="global_frame_id" value="map"/>
+        <param name="base_frame_id" value="base_link"/>
+    </node>
+
+
+
+    ### RVIZ ###
+    <node name="rviz_player" pkg="rviz" type="rviz" args="-d $(find pydog_environment)/$(arg scenario)/launch/ros/gaden.rviz"/>
+  
+# ===================== GADEN =====================================
+
+     ### NODE environment (for RVIZ visualization) ###
+    <node pkg="gaden_environment" type="environment" name="environment" output="screen">
+        <param name="verbose" value="false"/>
+        <param name="wait_preprocessing" value="false"/>    	  ### wait for the ok from gaden_preprocessing before running
+        <param name="fixed_frame" value="map"/>
+
+        # Plot CAD models (Collada format .dae)
+        <param name="number_of_CAD" value="3"/>
+	    <rosparam subst_value="True">
+            CAD_0: package://pydog_environment/$(arg scenario)/cad_models/wall.STL
+            CAD_0_color: [0.32, 0.36, 0.36]
+            
+            CAD_1: package://pydog_environment/$(arg scenario)/cad_models/outlet.STL
+            CAD_1_color: [1.0, 0.0, 0.0]
+
+            CAD_2: package://pydog_environment/$(arg scenario)/cad_models/inlet.STL
+            CAD_2_color: [0.01, 0.81, 0.98]
+        </rosparam>
+	            
+        # Plot 3D OccupancyGridmap
+        <param name="occupancy3D_data" value="$(find pydog_environment)/$(arg scenario)/OccupancyGrid3D.csv" />
+
+        # Plot gas sources
+        <param name="number_of_sources" value="1"/>
+        <param name="source_0_position_x" value="$(arg source_location_x)"/>
+        <param name="source_0_position_y" value="$(arg source_location_y)"/>
+        <param name="source_0_position_z" value="$(arg source_location_z)"/>
+        <rosparam>
+            source_0_scale: 0.2
+            source_0_color: [0.0, 1.0, 0.0] 
+        </rosparam>
+    </node>
+          
+    
+    ### NODE PLAYER ###
+    #-------------------
+    <node pkg="gaden_player" type="gaden_player" name="gaden_player" output="screen">
+        <param name="verbose" value="false" />
+	    <param name="player_freq" value="10" />         ###(Hz) Freq for loading the simulation log_files
+	    <param name="initial_iteration" value="0" />
+	    <param name="num_simulators" value="1" />      ### Number of simulations to load [1-inf] (useful for multiple sources and gases)
+    
+        # Data from the "filament_simulator" pkg. Multiple sources can be set here
+        <param name="simulation_data_0" value="$(find pydog_environment)/$(arg scenario)/gas_simulations/$(arg simulation)/FilamentSimulation_gasType_0_sourcePosition_$(arg source_location_x)_$(arg source_location_y)_$(arg source_location_z)" />
+        
+        # Loop options        
+        <param name="allow_looping" value="true" />
+        <param name="loop_from_iteration" value="289" />
+        <param name="loop_to_iteration" value="299" />
+
+        <param name="occupancyFile" value="$(find pydog_environment)/$(arg scenario)/OccupancyGrid3D.csv" />
+        
+    </node>
+  
+  
+    ### SENSOR SIMULATION ###
+  #-----------------------#
+  # SENSOR MODELS: 
+  # MOX: TGS2620=0, TGS2600=1, TGS2611=2
+  # PID: MiniRaeLite=30
+  # Sensors are simulated onboad the robot
+  
+  <group ns="PID">
+    <node pkg="simulated_gas_sensor" type="simulated_gas_sensor" name="fake_pid" output="screen">
+        <param name="/sensor_model" value="30" />
+        <param name="/sensor_frame" value="pid_frame" />
+        <param name="/fixed_frame" value="map"/>
+        <param name="/noise_std" value="20.1"/>
+    </node>
+  </group>
+  <node pkg="tf" type="static_transform_publisher" name="pid_broadcaster" args="0.0 0.0 0.5 0 0 0 base_link pid_frame 100" />  
+
+  <group ns="Anemometer">
+    <node pkg="simulated_anemometer" type="simulated_anemometer" name="fake_anemometer" output="screen">	        
+      <param name="/sensor_frame" value="anemometer_frame" />
+      <param name="/fixed_frame" value="map"/>
+      <param name="/noise_std" value="0.3"/>
+      <param name="/use_map_ref_system" value="false"/>
+    </node>
+  </group>
+  <node pkg="tf" type="static_transform_publisher" name="anemometer_broadcaster" args="0.0 0.0 0.5 0 0 0 base_link anemometer_frame 100" />
+
+</launch>
